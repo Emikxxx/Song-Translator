@@ -19,7 +19,6 @@ Podaj:
 1. Tłumaczenie
 2. Słówka do nauki
 3. Ciekawostki językowe
-4. Trudną gramatykę
 """
 
 def clean_text(text):
