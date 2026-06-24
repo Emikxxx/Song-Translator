@@ -1,0 +1,126 @@
+import streamlit as st
+from google import genai
+from google.genai import types
+import time
+import re
+
+# 1. Ustawienia wyglądu strony
+st.set_page_config(page_title="Tłumacz K-Pop", page_icon="🎵", layout="wide")
+
+# --- DODAWANIE TŁA STRONY ---
+st.markdown(
+    """
+    <style>
+    .stApp {
+        /* Zmienione tło na klimatyczny, koncertowy motyw pasujący do muzyki */
+        background-image: url("https://images.unsplash.com/photo-1493225457289-719545f49e49?q=80&w=2070&auto=format&fit=crop");
+        background-attachment: fixed;
+        background-size: cover;
+    }
+    
+    /* Wymuszenie, żeby główne tytuły były jasne i bardzo czytelne na ciemnym tle */
+    h1, h2, h3, h4, span[data-testid="stHeaderMarkdown"] {
+        color: #ffffff !important;
+        font-weight: bold !important;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+    }
+    
+    /* Ten kawałek sprawia, że kolumny i boksy tekstowe są lekko przezroczyste */
+    .stTextArea textarea, .stMarkdown, div[data-testid="stColumn"] {
+        background-color: rgba(255, 255, 255, 0.90) !important;
+        padding: 15px;
+        border-radius: 10px;
+    }
+    
+    /* Nadpisanie koloru nagłówków wewnątrz białych boksów, żeby były ciemne */
+    div[data-testid="stColumn"] h1, 
+    div[data-testid="stColumn"] h2, 
+    div[data-testid="stColumn"] h3 {
+        color: #111111 !important;
+        text-shadow: none !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+st.title("🎵 K-Pop Translator AI")
+st.subheader("System inteligentnego tłumaczenia piosenek i nauki języka koreańskiego")
+st.write("---")
+
+# 2. BEZPIECZNE POBIERANIE KLUCZA Z USTAWIEŃ STREAMLIT CLOUD (Twój świetny pomysł!)
+GEMINI_KEY = st.secrets["GOOGLE_API_KEY"]
+client = genai.Client(api_key=GEMINI_KEY)
+
+# 3. Definicja promptu systemowego (Ulepszona struktura)
+SYSTEM_PROMPT = """
+Jesteś ekspertem języka koreańskiego i kultury K-Pop.
+Odpowiadaj zawsze po polsku, używając ładnego formatowania Markdown.
+
+Dla podanego tekstu piosenki wygeneruj wynik w 3 czytelnych sekcjach:
+
+### 🎤 1. Tłumaczenie
+Podaj dokładne, ale brzmiące naturalnie tłumaczenie tekstu na język polski.
+
+### 📚 2. Słówka do nauki
+Wybierz 5-7 najważniejszych słówek z tekstu. Zapisz je w formie listy wypunktowanej:
+* **Hangeul** - *wymowa* - znaczenie
+
+### 💡 3. Ciekawostki językowe
+Wyjaśnij jedną lub dwie ciekawe konstrukcje gramatyczne, slang lub nawiązania kulturowe użyte w tekście.
+"""
+
+# 4. Tworzenie interfejsu użytkownika (2 kolumny)
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("### 📥 Wklej tekst piosenki")
+    user_input = st.text_area(
+        "Wklej oryginalny tekst po koreańsku (Hangeul):", 
+        height=400,
+        placeholder="Wklej tekst piosenki tutaj..."
+    )
+    
+    run_button = st.button("🚀 Analizuj z Gemini AI", use_container_width=True)
+
+with col2:
+    st.markdown("### 📤 Wynik analizy")
+    
+    if run_button:
+        if not user_input.strip():
+            st.error("Błąd: Najpierw wklej tekst piosenki do okienka po lewej stronie!")
+        else:
+            with st.spinner("AI analizuje tekst i przygotowuje słówka..."):
+                
+                max_retries = 3
+                response = None
+                
+                # Próba wysłania zapytania (max 3 podejścia - ochrona przed błędem 503)
+                for attempt in range(max_retries):
+                    try:
+                        # Używamy stabilnego modelu 1.5-flash
+                        response = client.models.generate_content(
+                            model='gemini-1.5-flash',
+                            contents=user_input,
+                            config=types.GenerateContentConfig(
+                                system_instruction=SYSTEM_PROMPT,
+                                temperature=0.2
+                            )
+                        )
+                        break  # Sukces! Przerwanie pętli
+                    except Exception as e:
+                        if "503" in str(e) and attempt < max_retries - 1:
+                            time.sleep(1.5)  # Serwer zajęty, czekamy i próbujemy znowu
+                            continue
+                        else:
+                            # Jeśli to inny błąd niż przeciążenie, wypisz go
+                            st.error(f"Wystąpił błąd komunikacji: {e}")
+                            break
+                
+                # Renderowanie wyniku w zależności od odpowiedzi serwera
+                if response:
+                    st.success("Gotowe!")
+                    # Używamy st.markdown, aby pogrubienia i listy od AI wyglądały pięknie!
+                    st.markdown(response.text)
+                elif not response:
+                    st.warning("⚠️ Usługa analizy jest w tej chwili przeciążona (Błąd 503). Serwery Google nie odpowiadają. Spróbuj ponownie za moment.")
